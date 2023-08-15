@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+
+    clickhouse-zookeeper:
+        image: zookeeper:latest
+        container_name: clickhouse-zookeeper
+        hostname: clickhouse-zookeeper
+        restart: unless-stopped
+        ports:
+            - 2181:2181
+            - 2182:2182
+
+    clickhouse-01:
+        image: yandex/clickhouse-server:latest
+        container_name: clickhouse-01
+        hostname: clickhouse-01
+        restart: unless-stopped
+        ports:
+            - 8123:8123
+            - 9001:9000
+        volumes:
+            - ./clickhouse/config/clickhouse_config.xml:/etc/clickhouse-server/config.xml
+            - ./clickhouse/config/clickhouse_metrika.xml:/etc/clickhouse-server/metrika.xml
+            - ./clickhouse/config/macros/macros-01.xml:/etc/clickhouse-server/config.d/macros.xml
+            - ./clickhouse/config/users.xml:/etc/clickhouse-server/users.xml
+            - 01_db:/var/lib/clickhouse
+        ulimits:
+            nofile:
+                soft: 262144
+                hard: 262144
+        depends_on:
+            - clickhouse-zookeeper
+
+    clickhouse-02:
+        image: yandex/clickhouse-server
+        hostname: clickhouse-02
+        container_name: clickhouse-02
+        ports:
+            - 9002:9000
+        volumes:
+                - ./clickhouse/config/clickhouse_config.xml:/etc/clickhouse-server/config.xml
+                - ./clickhouse/config/clickhouse_metrika.xml:/etc/clickhouse-server/metrika.xml
+                - ./clickhouse/config/macros/macros-02.xml:/etc/clickhouse-server/config.d/macros.xml
+                - ./clickhouse/config/users.xml:/etc/clickhouse-server/users.xml
+                - 02_db:/var/lib/clickhouse
+        ulimits:
+            nofile:
+                soft: 262144
+                hard: 262144
+        depends_on:
+            - clickhouse-zookeeper
+
+volumes:
+    01_db:
+        name: clickhouse-01_server_data
+    02_db:
+        name: clickhouse-02_server_data

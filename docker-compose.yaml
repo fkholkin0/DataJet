@@ -1,0 +1,99 @@
+version: '3.8'
+services:
+    nocodb:
+        image: nocodb/nocodb:latest
+        container_name: "nocodb"
+        ports:
+            - 8080:8080
+        restart: unless-stopped
+        environment:
+            NC_DB: pg://postgres:6000?u=${PG_SYS_NOCODB_USER_NAME}&p=${ROOT_POSTGRES_PASSWORD}&d=${PG_SYS_NOCODB_DB_NAME}&schema=public
+            NC_AUTOMATION_LOG_LEVEL: ALL
+            DB_QUERY_LIMIT_DEFAULT: 500
+            DB_QUERY_LIMIT_MAX: 100000
+        volumes:
+            - nc:/usr/app/data
+        depends_on: 
+            postgres:
+                condition: service_healthy  
+
+    postgres:
+        build: ./postgres
+        image: data-jet/postgres
+        container_name: "postgres"
+        ports:
+            - 6000:6000
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: ${ROOT_POSTGRES_PASSWORD}
+            PGPORT: 6000
+        env_file: .env
+        healthcheck: 
+            interval: 10s
+            retries: 10
+            test: [ "CMD-SHELL", "/usr/local/bin/healthcheck.sh" ]
+            timeout: 2s
+        volumes:
+            - ./postgres/scripts/init.sh:/docker-entrypoint-initdb.d/init.sh
+            - ./postgres/scripts/healthcheck.sh:/usr/local/bin/healthcheck.sh
+            - pg_data:/var/lib/postgresql/data
+
+    metabase:
+        image: metabase/metabase:latest
+        container_name: "metabase"
+        ports:
+            - 3000:3000
+        environment:
+            MB_DB_TYPE: postgres
+            MB_DB_DBNAME: ${PG_SYS_METABASE_DB_NAME}
+            MB_DB_PORT: 6000
+            MB_DB_USER: ${PG_SYS_METABASE_USER_NAME}
+            MB_DB_PASS: ${ROOT_POSTGRES_PASSWORD}
+            MB_DB_HOST: postgres
+        restart: unless-stopped
+        volumes:
+            - ./metabase/plugins/clickhouse.jar:/plugins/clickhouse.jar
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    n8n:
+        build: ./n8n
+        image: data-jet/n8n
+        container_name: "n8n"
+        ports:
+            - 5678:5678
+        environment:
+            DB_TYPE: postgresdb
+            DB_POSTGRESDB_DATABASE: ${PG_SYS_N8N_DB_NAME}
+            DB_POSTGRESDB_HOST: postgres
+            DB_POSTGRESDB_PORT: 6000
+            DB_POSTGRESDB_USER: ${PG_SYS_N8N_USER_NAME}
+            DB_POSTGRESDB_SCHEMA: public
+            DB_POSTGRESDB_PASSWORD: ${ROOT_POSTGRES_PASSWORD}
+            N8N_PORT: 5678
+            N8N_BASIC_AUTH_ACTIVE: true
+            N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
+            N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+            N8N_HOST: n8n.${DOMAIN_NAME}
+            N8N_PROTOCOL: https
+            NODE_ENV: production
+            WEBHOOK_URL: https://n8n.${DOMAIN_NAME}/
+            GENERIC_TIMEZONE: Europe/Moscow
+        restart: unless-stopped
+        volumes:
+            - n8n:/home/node/.n8n
+            - /Users/user/Documents/DataJet/python_scripts/requirements.txt:/home/node/.n8n/requirements.txt
+
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+volumes:
+    nc:
+        name: nocodb_data
+    n8n:
+        name: n8n_data
+    pg_data:
+        name: data-jet_db
